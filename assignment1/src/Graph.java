@@ -130,10 +130,20 @@ public class Graph {
                 }
             }
         }
-
     }
 }
 
+class Edge {
+    int from, to, weight, type, maxSpeed;
+
+    Edge(int from, int to, int weight, int type, int maxSpeed) {
+        this.from = from;
+        this.to = to;
+        this.weight = weight;
+        this.type = type;
+        this.maxSpeed = maxSpeed;
+    }
+}
 
 class Node {
     int id;
@@ -147,17 +157,5 @@ class Node {
         this.lon = lon;
         this.lat = lat;
         this.elevation = elevation;
-    }
-}
-
-class Edge {
-    int from, to, weight, type, maxSpeed;
-
-    Edge(int from, int to, int weight, int type, int maxSpeed) {
-        this.from = from;
-        this.to = to;
-        this.weight = weight;
-        this.type = type;
-        this.maxSpeed = maxSpeed;
     }
 }
