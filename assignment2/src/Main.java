@@ -2,8 +2,8 @@ import java.io.*;
 
 public class Main {
     public static void main(String[] args) throws IOException {
-        //String graphFile = "graph.fmi";
         String graphFile = "graph.fmi";
+
         if (args.length >= 1) {
             graphFile = args[0];
         }
@@ -47,7 +47,7 @@ public class Main {
                 // Parse queries from queries.txt if it exists
                 File queriesFile = new File("queries.txt");
                 if (queriesFile.exists()) {
-                    System.out.println("Processing some queries for results.txt...");
+                    System.out.println("Processing queries for results.txt...");
                     try (BufferedReader reader = new BufferedReader(new FileReader(queriesFile))) {
                         String line;
 
@@ -60,7 +60,7 @@ public class Main {
                                 int source = Integer.parseInt(parts[0]);
                                 int target = Integer.parseInt(parts[1]);
                                 long start_time = System.nanoTime();
-                                double distance = CHQuery.computeDistance(graph, source, target);
+                                double distance = CHQuery.computeDistance2(graph, source, target);
                                 long elapsed = (System.nanoTime() - start_time) / 1000;
 
                                 writer.println(source + " " + target + " " + distance + " " + elapsed);

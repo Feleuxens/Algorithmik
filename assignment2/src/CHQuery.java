@@ -7,6 +7,57 @@ import java.util.*;
  */
 public class CHQuery {
     public static double computeDistance(Graph graph, int sourceId, int targetId) {
+        double[] distances = new double[graph.nodeCount];
+        Arrays.fill(distances, Double.POSITIVE_INFINITY);
+        distances[sourceId] = 0;
+
+        // Use integer primitive array for predecessor tracking
+        int[] pred = new int[graph.nodeCount];
+        Arrays.fill(pred, -1);
+
+        // Basic priority queue
+        PriorityQueue<Integer> queue = new PriorityQueue<>(
+                Comparator.comparingDouble(nodeId -> distances[nodeId]));
+        queue.add(sourceId);
+
+        boolean[] visited = new boolean[graph.nodeCount];
+
+        while (!queue.isEmpty()) {
+            int nodeId = queue.poll();
+
+            // Skip if already visited
+            if (visited[nodeId]) continue;
+            visited[nodeId] = true;
+
+            // Reached target
+            if (nodeId == targetId) {
+                return distances[targetId];
+            }
+
+            // Process outgoing edges using offset arrays
+            for (int i = graph.outOffsets[nodeId]; i < graph.outOffsets[nodeId + 1]; i++) {
+                if (i >= 0 && i < graph.outEdges.length) {  // Safety check
+                    Edge edge = graph.outEdges[i];
+                    if (edge != null) {
+                        int targetNode = edge.getTarget();
+                        if (targetNode >= 0 && targetNode < graph.nodeCount) {  // Safety check
+                            double weight = edge.getWeight();
+
+                            double newDist = distances[nodeId] + weight;
+                            if (newDist < distances[targetNode]) {
+                                distances[targetNode] = newDist;
+                                pred[targetNode] = nodeId;
+                                queue.add(targetNode);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return Double.POSITIVE_INFINITY;
+    }
+
+    public static double computeDistance2(Graph graph, int sourceId, int targetId) {
         double[] forwardDistance = new double[graph.nodeCount];
         double[] backwardDistance = new double[graph.nodeCount];
         Arrays.fill(forwardDistance, Double.POSITIVE_INFINITY);
