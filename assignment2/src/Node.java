@@ -1,10 +1,10 @@
 public class Node {
-    private final int id;
-    private final long osmId;
-    private final double lat;
-    private final double lon;
-    private final int height;
-    private int level;
+    public final int id;
+    public final long osmId;
+    public final double lat;
+    public final double lon;
+    public final int height;
+    public int level;
 
     /**
      * Create a new node.

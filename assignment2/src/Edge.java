@@ -2,13 +2,13 @@
  * Edge class to represent a directed edge in the graph.
  */
 public class Edge {
-    private final int source;
-    private final int target;
-    private final int weight;
-    private final int type;
-    private final int maxSpeed;
-    private final int edgeIdA;  // -1 for original edges, otherwise ID of first replaced edge
-    private final int edgeIdB;  // -1 for original edges, otherwise ID of second replaced edge
+    public final int source;
+    public final int target;
+    public final int weight;
+    public final int type;
+    public final int maxSpeed;
+    public final int edgeIdA;  // -1 for original edges, otherwise ID of first replaced edge
+    public final int edgeIdB;  // -1 for original edges, otherwise ID of second replaced edge
 
     // Flags for CH preprocessing
     private final boolean isShortcut;

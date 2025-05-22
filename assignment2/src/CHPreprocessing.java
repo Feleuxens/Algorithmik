@@ -1,167 +1,324 @@
 import java.util.*;
 
-class CHPreprocessing {
-    int[] nodeImportance;
+public class CHPreprocessing {
+    private Graph graph;
+    private PriorityQueue<NodeImportance> nodeQueue;
+    private boolean[] contracted;
+    private int contractionLevel;
 
-    public CHPreprocessing() {}
-
-    public Graph preprocess(Graph graph) {
-        System.out.println("Starting chunked preprocessing: " + graph.nodeCount + " nodes");
-
-        // 1. Calculate simplified contraction ordering
-        int[] contractionOrder = contractionOrder(graph);
-
-        // 2. Process in completely independent chunks
-        int chunkSize = 100000; // Process 100K nodes at once
-        int chunkCount = (graph.nodeCount + chunkSize - 1) / chunkSize;
-        System.out.println("Processing graph in " + chunkCount + " chunks of " + chunkSize + " nodes each");
-
-        List<Edge> allShortcuts = new ArrayList<>();
-        boolean[] contracted = new boolean[graph.nodeCount];
-
-        for (int chunk = 0; chunk < chunkCount; chunk++) {
-            int startIdx = chunk * chunkSize;
-            int endIdx = Math.min((chunk + 1) * chunkSize, graph.nodeCount);
-
-            // Process this chunk without dependency checking
-            List<Edge> chunkShortcuts = processChunkIndependently(
-                    graph, contractionOrder, startIdx, endIdx, contracted);
-
-            // Add shortcuts from this chunk
-            allShortcuts.addAll(chunkShortcuts);
-
-            System.out.println("Chunk " + (chunk+1) + " complete. " +
-                    chunkShortcuts.size() + " shortcuts added. " +
-                    "Total shortcuts: " + allShortcuts.size());
-        }
-
-        rebuildGraph(graph, allShortcuts);
-
-        // 3. Set node levels based on contraction order
-        assignNodeLevels(graph, contractionOrder);
-
-        System.out.println("Chunked preprocessing complete.");
-        return graph;
-    }
-
-    private void rebuildGraph(Graph graph, List<Edge> shortcuts) {
-        int requiredSize = graph.edgeCount + shortcuts.size();
-        if (graph.edges.length < requiredSize) {
-            Edge[] newEdges = new Edge[requiredSize];
-            System.arraycopy(graph.edges, 0, newEdges, 0, graph.edgeCount);
-            graph.edges = newEdges;
-        }
-
-        // Add new shortcuts
-        for (Edge shortcut : shortcuts) {
-            graph.edges[graph.edgeCount++] = shortcut;
-        }
-
-        // Rebuild offset arrays
-        graph.buildOffsetArrays();
-    }
-
-
-    private void assignNodeLevels(Graph graph, int[] contractionOrder) {
-        // Map from node ID to rank
-        int[] rankMap = new int[graph.nodeCount];
-        for (int i = 0; i < contractionOrder.length; i++) {
-            rankMap[contractionOrder[i]] = i;
-        }
-
-        // Set node levels
-        for (int i = 0; i < graph.nodeCount; i++) {
-            graph.nodes[i].setLevel(rankMap[i]);
-        }
-    }
-
-    private int[] contractionOrder(Graph graph) {
-        System.out.println("Computing contraction order...");
-
-        nodeImportance = new int[graph.nodeCount];
-
-        // Calculate initial node importance based on degree
-        for (int i = 0; i < graph.nodeCount; i++) {
-            int inDegree = graph.inOffsets[i + 1] - graph.inOffsets[i];
-            int outDegree = graph.outOffsets[i + 1] - graph.outOffsets[i];
-            nodeImportance[i] = inDegree + outDegree;
-        }
-
-        // Create node list
-        Integer[] nodeIds = new Integer[graph.nodeCount];
-        for (int i = 0; i < graph.nodeCount; i++) {
-            nodeIds[i] = i;
-        }
-
-        // Sort by importance
-        final int[] importance = nodeImportance;
-        Arrays.sort(nodeIds, Comparator.comparingInt(id -> importance[id]));
-
-        // Convert to primitive array
-        int[] contractionOrder = new int[graph.nodeCount];
-        for (int i = 0; i < graph.nodeCount; i++) {
-            contractionOrder[i] = nodeIds[i];
-        }
-
-        return contractionOrder;
+    public CHPreprocessing(Graph graph) {
+        this.graph = graph;
+        this.contracted = new boolean[graph.nodeCount];
+        this.contractionLevel = 0;
     }
 
     /**
-     * Process a chunk of nodes completely independently
+     * Main contraction method that builds the hierarchy
      */
-    private List<Edge> processChunkIndependently(
-            Graph graph, int[] contractionOrder,
-            int startIdx, int endIdx, boolean[] contracted) {
+    public void buildHierarchy() {
+        // Initialize node importance queue
+        initializeNodeImportance();
+        System.out.println("Finished initializing importance");
 
-        List<Edge> shortcuts = new ArrayList<>();
+        // Contract nodes in order of importance
+        while (!nodeQueue.isEmpty()) {
+            System.out.println(nodeQueue.size());
+            NodeImportance nodeImportance = nodeQueue.poll();
+            int nodeId = nodeImportance.nodeId;
 
-        // Process each node in this chunk
-        for (int i = startIdx; i < endIdx; i++) {
-            int nodeToContract = contractionOrder[i];
-
-            // Skip if already contracted
-            if (contracted[nodeToContract]) {
+            // Recalculate importance to ensure it's still the least important
+            double currentImportance = calculateNodeImportance(nodeId);
+            if (currentImportance > nodeImportance.importance + 1e-6) {
+                // Node importance has increased, reinsert with new importance
+                nodeQueue.offer(new NodeImportance(nodeId, currentImportance));
                 continue;
             }
 
-            // Collect all edges
-            List<Edge> inEdges = new ArrayList<>();
-            List<Edge> outEdges = new ArrayList<>();
+            // Contract the node
+            contractNode(nodeId);
+        }
+    }
 
-            // Get incoming edges from uncontracted nodes
-            for (int j = graph.inOffsets[nodeToContract]; j < graph.inOffsets[nodeToContract + 1]; j++) {
-                Edge edge = graph.inEdges[j];
-                if (!contracted[edge.getSource()]) {
-                    inEdges.add(edge);
-                }
+    /**
+     * Initialize the priority queue with all nodes and their importance
+     */
+    private void initializeNodeImportance() {
+        nodeQueue = new PriorityQueue<>();
+        for (int i = 0; i < graph.nodeCount; i++) {
+            if (!contracted[i]) {
+                double importance = calculateNodeImportance(i);
+                nodeQueue.offer(new NodeImportance(i, importance));
             }
-
-            // Get outgoing edges to uncontracted nodes
-            for (int j = graph.outOffsets[nodeToContract]; j < graph.outOffsets[nodeToContract + 1]; j++) {
-                Edge edge = graph.outEdges[j];
-                if (!contracted[edge.getTarget()]) {
-                    outEdges.add(edge);
-                }
+            if (i % 10000 == 0) {
+                System.out.println("Worked through " + i + " nodes");
             }
+        }
+    }
 
-            // IMPORTANT: For large graphs, we need to ensure connectivity
-            // Create necessary shortcuts between all neighbors - eliminate witness path search completely
-            // This is less efficient but ensures paths exist
-            for (Edge inEdge : inEdges) {
-                for (Edge outEdge : outEdges) {
-                    // Skip self-loops
-                    if (inEdge.getSource() == outEdge.getTarget()) continue;
-
-                    // Create shortcut
-                    int dist = inEdge.getWeight() + outEdge.getWeight();
-                    shortcuts.add(new Edge(inEdge.getSource(), outEdge.getTarget(), dist));
-                }
-            }
-
-            // Mark as contracted
-            contracted[nodeToContract] = true;
+    /**
+     * Calculate the importance of a node for contraction ordering
+     */
+    private double calculateNodeImportance(int nodeId) {
+        if (contracted[nodeId]) {
+            return Double.MAX_VALUE;
         }
 
-        return shortcuts;
+        // Count edges without expensive witness search
+        int inDegree = graph.inOffsets[nodeId + 1] - graph.inOffsets[nodeId];
+        int outDegree = graph.outOffsets[nodeId + 1] - graph.outOffsets[nodeId];
+
+        // Remove contracted edges from count
+        int activeInDegree = 0;
+        int activeOutDegree = 0;
+
+        for (int i = graph.inOffsets[nodeId]; i < graph.inOffsets[nodeId + 1]; i++) {
+            if (!contracted[graph.inEdges[i].source]) {
+                activeInDegree++;
+            }
+        }
+
+        for (int i = graph.outOffsets[nodeId]; i < graph.outOffsets[nodeId + 1]; i++) {
+            if (!contracted[graph.outEdges[i].target]) {
+                activeOutDegree++;
+            }
+        }
+
+        // Simple heuristic: assume we need shortcuts for most edge pairs
+        // This overestimates but is much faster than witness search
+        int potentialShortcuts = activeInDegree * activeOutDegree;
+        int edgesRemoved = activeInDegree + activeOutDegree;
+        int edgeDifference = potentialShortcuts - edgesRemoved;
+
+        // Add penalty for high-degree nodes and bonus for contracted neighbors
+        int contractedNeighbors = (inDegree - activeInDegree) + (outDegree - activeOutDegree);
+
+        return edgeDifference - contractedNeighbors * 0.5;
+    }
+
+    /**
+     * Contract a specific node by adding necessary shortcuts
+     */
+    private void contractNode(int nodeId) {
+        List<Edge> incomingEdges = getIncomingEdges(nodeId);
+        List<Edge> outgoingEdges = getOutgoingEdges(nodeId);
+        List<Edge> shortcuts = new ArrayList<>();
+
+        // Early exit for low-degree nodes
+        if (incomingEdges.isEmpty() || outgoingEdges.isEmpty()) {
+            contracted[nodeId] = true;
+            graph.nodes[nodeId].level = contractionLevel++;
+            return;
+        }
+
+        // Find all necessary shortcuts with optimizations
+        for (Edge inEdge : incomingEdges) {
+            for (Edge outEdge : outgoingEdges) {
+                if (inEdge.source == outEdge.target) continue;
+
+                int shortcutWeight = inEdge.weight + outEdge.weight;
+
+                // Skip witness search for very short shortcuts - they're almost always needed
+                boolean needsShortcut = shortcutWeight <= 1000 ||
+                        !hasWitnessPath(inEdge.source, outEdge.target, shortcutWeight, nodeId);
+
+                if (needsShortcut) {
+                    // Create shortcut edge
+                    Edge shortcut = new Edge(inEdge.source, outEdge.target, shortcutWeight,
+                            Math.max(inEdge.type, outEdge.type),
+                            Math.min(inEdge.maxSpeed, outEdge.maxSpeed), -1 , -1);
+                    shortcuts.add(shortcut);
+                }
+            }
+        }
+
+        // Add shortcuts to graph (only if we have any)
+        if (!shortcuts.isEmpty()) {
+            addShortcutsToGraph(shortcuts);
+        }
+
+        // Mark node as contracted and set its level
+        contracted[nodeId] = true;
+        graph.nodes[nodeId].level = contractionLevel++;
+    }
+
+    /**
+     * Check if there exists a witness path that is not longer than the potential shortcut
+     */
+    private boolean hasWitnessPath(int source, int target, int maxWeight, int avoidNode) {
+        if (source == target) return true;
+
+        // Use a simple BFS-like approach with strict limits
+        Queue<Integer> queue = new ArrayDeque<>();
+        int[] distances = new int[graph.nodeCount];
+        Arrays.fill(distances, Integer.MAX_VALUE);
+
+        queue.offer(source);
+        distances[source] = 0;
+
+        int nodesExplored = 0;
+        int maxNodes = 20; // Very aggressive limit
+        int hopLimit = 3;   // Maximum 3 hops
+
+        while (!queue.isEmpty() && nodesExplored < maxNodes) {
+            int current = queue.poll();
+            int currentDist = distances[current];
+
+            if (currentDist >= maxWeight) continue;
+            if (currentDist > maxWeight - 100) continue; // Early pruning
+
+            // Hop limit check (approximate)
+            if (currentDist > hopLimit * (maxWeight / 4)) continue;
+
+            nodesExplored++;
+
+            // Check neighbors
+            for (int i = graph.outOffsets[current]; i < graph.outOffsets[current + 1]; i++) {
+                Edge edge = graph.outEdges[i];
+
+                if (edge.target == avoidNode || contracted[edge.target]) continue;
+
+                int newDist = currentDist + edge.weight;
+
+                if (edge.target == target && newDist < maxWeight) {
+                    return true; // Found witness path
+                }
+
+                if (newDist < distances[edge.target] && newDist < maxWeight) {
+                    distances[edge.target] = newDist;
+                    queue.offer(edge.target);
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Get incoming edges for a node
+     */
+    private List<Edge> getIncomingEdges(int nodeId) {
+        List<Edge> edges = new ArrayList<>();
+        for (int i = graph.inOffsets[nodeId]; i < graph.inOffsets[nodeId + 1]; i++) {
+            edges.add(graph.inEdges[i]);
+        }
+        return edges;
+    }
+
+    /**
+     * Get outgoing edges for a node
+     */
+    private List<Edge> getOutgoingEdges(int nodeId) {
+        List<Edge> edges = new ArrayList<>();
+        for (int i = graph.outOffsets[nodeId]; i < graph.outOffsets[nodeId + 1]; i++) {
+            edges.add(graph.outEdges[i]);
+        }
+        return edges;
+    }
+
+    /**
+     * Add shortcuts to the graph structure
+     */
+    private void addShortcutsToGraph(List<Edge> shortcuts) {
+        if (shortcuts.isEmpty()) return;
+
+        // This is a simplified version - in practice, you'd need to rebuild
+        // the offset arrays and edge arrays to maintain the compact representation
+        List<Edge> newOutEdges = new ArrayList<>();
+        List<Edge> newInEdges = new ArrayList<>();
+
+        // Copy existing edges
+        for (Edge edge : graph.outEdges) {
+            if (edge != null) newOutEdges.add(edge);
+        }
+        for (Edge edge : graph.inEdges) {
+            if (edge != null) newInEdges.add(edge);
+        }
+
+        // Add shortcuts
+        for (Edge shortcut : shortcuts) {
+            newOutEdges.add(shortcut);
+            newInEdges.add(new Edge(shortcut.target, shortcut.source, shortcut.weight,
+                    shortcut.type, shortcut.maxSpeed, -1, -1));
+        }
+
+        // Update graph (this requires rebuilding the offset arrays)
+        rebuildGraphStructure(newOutEdges, newInEdges);
+    }
+
+    /**
+     * Rebuild the graph structure with new edges
+     * This is a simplified version - in practice, you'd sort edges and rebuild offsets
+     */
+    private void rebuildGraphStructure(List<Edge> outEdges, List<Edge> inEdges) {
+        // Sort edges by source node
+        outEdges.sort((a, b) -> Integer.compare(a.source, b.source));
+        inEdges.sort((a, b) -> Integer.compare(a.target, b.target));
+
+        // Rebuild out edges and offsets
+        graph.outEdges = outEdges.toArray(new Edge[0]);
+        graph.edgeCount = outEdges.size();
+
+        // Rebuild out offsets
+        int currentNode = 0;
+        graph.outOffsets[0] = 0;
+        for (int i = 0; i < outEdges.size(); i++) {
+            while (currentNode < outEdges.get(i).source) {
+                currentNode++;
+                graph.outOffsets[currentNode] = i;
+            }
+        }
+        while (currentNode < graph.nodeCount) {
+            graph.outOffsets[++currentNode] = outEdges.size();
+        }
+
+        // Rebuild in edges and offsets similarly
+        graph.inEdges = inEdges.toArray(new Edge[0]);
+        currentNode = 0;
+        graph.inOffsets[0] = 0;
+        for (int i = 0; i < inEdges.size(); i++) {
+            while (currentNode < inEdges.get(i).target) {
+                currentNode++;
+                graph.inOffsets[currentNode] = i;
+            }
+        }
+        while (currentNode < graph.nodeCount) {
+            graph.inOffsets[++currentNode] = inEdges.size();
+        }
+    }
+
+    /**
+     * Helper class for node importance in priority queue
+     */
+    private static class NodeImportance implements Comparable<NodeImportance> {
+        int nodeId;
+        double importance;
+
+        NodeImportance(int nodeId, double importance) {
+            this.nodeId = nodeId;
+            this.importance = importance;
+        }
+
+        @Override
+        public int compareTo(NodeImportance other) {
+            return Double.compare(this.importance, other.importance);
+        }
+    }
+
+    /**
+     * Helper class for Dijkstra's algorithm during witness search
+     */
+    private static class DijkstraState implements Comparable<DijkstraState> {
+        int nodeId;
+        int distance;
+
+        DijkstraState(int nodeId, int distance) {
+            this.nodeId = nodeId;
+            this.distance = distance;
+        }
+
+        @Override
+        public int compareTo(DijkstraState other) {
+            return Integer.compare(this.distance, other.distance);
+        }
     }
 }
