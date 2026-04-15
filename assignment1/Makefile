@@ -1,11 +1,3 @@
-JAVAC=javac
-JAVA=java
-SRCDIR=src
-BIN=bin
-
-CLASSPATH=$(JUNIT):$(BIN)
-
 make:
-	mkdir -p $(BIN)
-	$(JAVAC) -d $(BIN) $(SRCDIR)/*.java
-	$(JAVA) -cp $(BIN) Main
+	cargo build --release
+	target/release/assignment1
