@@ -1,0 +1,9 @@
+[package]
+name = "assignment2"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+thread_local = "1.1.9"
+rayon = "1.12.0"
+priority-queue = "2.7.0"
