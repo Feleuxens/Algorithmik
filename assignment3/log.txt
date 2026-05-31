@@ -1,0 +1,9 @@
+Reading graph file took 16.117559615ss
+Preprocessing of contraction hierarchies took 157.476181963ss
+Writing ch graph took 13.496758441ss
+
+Overall edges: 88145696
+Original edge count: 50790030
+Shortcut edge count: 37355666
+
+Closure preprocess time: 15s, added 608628334 closure in 5 groups
