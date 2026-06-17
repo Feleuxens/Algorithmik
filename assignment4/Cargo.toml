@@ -1,6 +1,13 @@
 [package]
-name = "assignment4"
+name = "ae4"
 version = "0.1.0"
 edition = "2024"
 
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+
 [dependencies]
+rand = { version = "0.10.1" }
